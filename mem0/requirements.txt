@@ -1,0 +1,11 @@
+# Chainlit - Web 聊天界面框架
+chainlit>=1.0.0
+
+# Mem0 - 记忆管理库
+mem0ai>=0.1.0
+
+# Requests - HTTP 请求库（用于调用 Ollama API）
+requests>=2.31.0
+
+# Python-dotenv - 环境变量管理
+python-dotenv>=1.0.0
