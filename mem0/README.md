@@ -4,7 +4,7 @@
 
 ## ✨ 功能特性
 
-- 🤖 **本地 LLM**: 使用 Ollama 运行 `gemma3:27b` 模型
+- 🤖 **本地 LLM**: 使用 Ollama 运行 `qwen2.5:3b` 模型
 - 🧠 **本地记忆**: 使用 Mem0 + Qdrant 在本地存储对话记忆
 - 🎨 **Web 界面**: 使用 Chainlit 提供类似 ChatGPT 的聊天界面
 - 💾 **数据本地化**: 所有数据存储在 `mem0_data` 文件夹中
@@ -15,7 +15,7 @@
 - **Python**: 3.8 或更高版本
 - **Ollama**: 已安装并运行（默认地址 `http://localhost:11434`）
 - **模型**: 已安装以下 Ollama 模型
-  - `gemma3:27b`（聊天模型）
+  - `qwen2.5:3b`（聊天模型）
   - `nomic-embed-text`（嵌入模型，768 维）
 
 ## 🚀 安装步骤
@@ -64,11 +64,11 @@ pip install -r requirements.txt
 ollama list
 ```
 
-如果没有看到 `gemma3:27b` 或 `nomic-embed-text`，请安装：
+如果没有看到 `qwen2.5:3b` 或 `nomic-embed-text`，请安装：
 
 ```powershell
 # 安装聊天模型（如果尚未安装）
-ollama pull gemma3:27b
+ollama pull qwen2.5:3b
 
 # 安装嵌入模型（必须安装，用于生成向量）
 ollama pull nomic-embed-text
@@ -132,7 +132,7 @@ mem0/
 OLLAMA_BASE_URL=http://localhost:11434
 
 # 聊天模型
-CHAT_MODEL=gemma3:27b
+CHAT_MODEL=qwen2.5:3b
 
 # 嵌入模型
 EMBEDDING_MODEL=nomic-embed-text

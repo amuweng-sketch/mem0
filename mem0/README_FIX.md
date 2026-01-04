@@ -136,7 +136,7 @@ config = {
     "llm": {
         "provider": "ollama",
         "config": {
-            "model": "gemma3:27b",
+            "model": "qwen2.5:3b",
             "ollama_base_url": "http://localhost:11434"
         }
     },

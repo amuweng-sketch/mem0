@@ -1,20 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 基于 Mem0 和 Chainlit 的本地记忆聊天机器人
-使用 Ollama 本地大模型和本地向量数据库
+使用 OpenRouter API (DeepSeek V3) 和本地向量数据库
 """
 
 import os  # 导入 os 模块，用于操作系统相关功能
 import requests  # 导入 requests 库，用于发送 HTTP 请求
 import chainlit as cl  # 导入 Chainlit 库，简写为 cl
-from config import init_mem0, OLLAMA_BASE_URL, CHAT_MODEL  # 从 config 模块导入配置
+from config import init_mem0, OPENROUTER_API_KEY, OPENROUTER_BASE_URL, CHAT_MODEL  # 从 config 模块导入配置
 
 # ========================================
-# 第一步：代理绕过设置（在文件最开始）
+# 代理设置（不需要绕过了，OpenRouter 是远程 API）
 # ========================================
-# 确保 localhost 不走代理（已在 config.py 中设置，这里再次确认）
-os.environ['NO_PROXY'] = 'localhost,127.0.0.1'
-os.environ['no_proxy'] = 'localhost,127.0.0.1'
+# 如果有本地 Ollama 嵌入模型，仍需要确保 localhost 不走代理
+# 已在 config.py 中设置
 
 # ========================================
 # 全局变量：Mem0 记忆实例
@@ -23,12 +22,11 @@ memory = None  # 初始化为 None，将在应用启动时创建
 
 
 # ========================================
-# 辅助函数：调用 Ollama 生成回复（流式输出版本）
+# 辅助函数：调用 OpenRouter API 生成回复（流式输出版本）
 # ========================================
-# 【修改】：将完整返回改为流式生成器，逐块返回数据
-def call_ollama_stream(messages):
+def call_openrouter_stream(messages):
     """
-    调用 Ollama API 生成聊天回复（流式输出）
+    调用 OpenRouter API 生成聊天回复（流式输出）
     
     参数:
         messages (list): 消息列表，格式为 [{"role": "user", "content": "..."}, ...]
@@ -36,51 +34,66 @@ def call_ollama_stream(messages):
     返回:
         generator: 生成器，逐块产出回复文本片段
     """
-    # 导入 json 模块用于解析流式响应
-    import json
+    import json  # 导入 json 模块用于解析流式响应
     
-    # 构建 Ollama API 的完整 URL（/api/chat 端点）
-    url = f"{OLLAMA_BASE_URL}/api/chat"
+    # 构建 OpenRouter API 的完整 URL
+    url = f"{OPENROUTER_BASE_URL}/chat/completions"
+    
+    # 设置请求头，包含 API 密钥认证
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",  # API 密钥认证
+        "Content-Type": "application/json",  # 请求体格式
+        "HTTP-Referer": "http://localhost:8000",  # 可选：你的网站 URL（用于统计）
+        "X-Title": "Mem0 Chatbot"  # 可选：应用名称
+    }
     
     # 构建请求体（JSON 格式）
-    # 【修改】：将 stream 参数设置为 True，启用流式输出
     payload = {
-        "model": CHAT_MODEL,  # 使用的模型名称
+        "model": CHAT_MODEL,  # 使用的模型名称（deepseek/deepseek-chat）
         "messages": messages,  # 传入的消息列表
-        "stream": True  # 【修改】：启用流式输出，逐块返回数据
+        "stream": True  # 启用流式输出，逐块返回数据
     }
     
     try:
-        # 【修改】：使用 stream=True 参数发送请求，启用响应流
-        response = requests.post(url, json=payload, timeout=120, stream=True)
+        # 发送 POST 请求，启用流式响应
+        response = requests.post(url, json=payload, headers=headers, timeout=120, stream=True)
         response.raise_for_status()  # 如果响应状态码不是 2xx，则抛出异常
         
-        # 【修改】：逐行读取流式响应
-        # iter_lines() 会逐行返回响应内容，适合处理流式数据
+        # 逐行读取流式响应
+        # OpenRouter 使用 SSE (Server-Sent Events) 格式
         for line in response.iter_lines():
             if line:  # 跳过空行
-                # 【修改】：解析每一行的 JSON 数据
-                try:
-                    chunk = json.loads(line)  # 将 JSON 字符串解析为字典
-                    
-                    # 【修改】：提取当前块中的内容片段
-                    # Ollama 流式响应格式: {"message": {"content": "..."}, "done": false}
-                    if 'message' in chunk and 'content' in chunk['message']:
-                        content = chunk['message']['content']  # 获取文本片段
-                        if content:  # 如果内容不为空
-                            yield content  # 【修改】：通过生成器返回文本片段
-                    
-                    # 【修改】：检查是否已完成
-                    if chunk.get('done', False):
-                        break  # 流式输出完成，退出循环
+                # 解码行内容
+                line_str = line.decode('utf-8')
                 
-                except json.JSONDecodeError:
-                    # 如果某一行解析失败，跳过该行
-                    continue
+                # SSE 格式以 "data: " 开头
+                if line_str.startswith('data: '):
+                    # 提取 JSON 数据部分
+                    json_str = line_str[6:]  # 移除 "data: " 前缀
+                    
+                    # 检查是否是结束信号
+                    if json_str.strip() == '[DONE]':
+                        break  # 流式输出完成，退出循环
+                    
+                    try:
+                        # 解析 JSON 数据
+                        chunk = json.loads(json_str)
+                        
+                        # 提取当前块中的内容片段
+                        # OpenRouter 流式响应格式: {"choices": [{"delta": {"content": "..."}}]}
+                        if 'choices' in chunk and len(chunk['choices']) > 0:
+                            delta = chunk['choices'][0].get('delta', {})
+                            content = delta.get('content', '')
+                            if content:  # 如果内容不为空
+                                yield content  # 通过生成器返回文本片段
+                    
+                    except json.JSONDecodeError:
+                        # 如果某一行解析失败，跳过该行
+                        continue
     
     except requests.exceptions.RequestException as e:
         # 如果请求失败，返回错误信息
-        yield f"❌ Ollama 调用失败: {str(e)}"
+        yield f"❌ OpenRouter 调用失败: {str(e)}"
 
 
 # ========================================
@@ -112,7 +125,7 @@ async def on_chat_start():
 👋 **你好！我是你的本地记忆助手**
 
 我使用以下技术为你服务：
-- 🤖 **大模型**: Ollama (gemma3:27b)
+- 🤖 **大模型**: OpenRouter (DeepSeek V3)
 - 🧠 **记忆系统**: Mem0 (本地向量数据库)
 - 🎨 **界面**: Chainlit
 
@@ -123,6 +136,13 @@ async def on_chat_start():
     
     # 发送欢迎消息到界面
     await cl.Message(content=welcome_message).send()
+    
+    # ========================================
+    # 初始化对话历史（新增！）
+    # ========================================
+    # 在用户会话中存储对话历史，用于保持多轮对话上下文
+    cl.user_session.set("chat_history", [])
+    print("📋 已初始化对话历史")
 
 
 # ========================================
@@ -186,7 +206,13 @@ async def on_message(message: cl.Message):
             print(f"⚠️ 记忆检索失败: {e}")
     
     # ========================================
-    # 第二步：构建发送给 Ollama 的消息
+    # 第二步：获取对话历史（新增！）
+    # ========================================
+    # 从用户会话中获取之前的对话历史
+    chat_history = cl.user_session.get("chat_history", [])
+    
+    # ========================================
+    # 第三步：构建发送给 OpenRouter 的消息
     # ========================================
     # 如果有相关记忆，将其添加到系统提示中
     system_message = "你是一个友好的助手。"
@@ -194,16 +220,22 @@ async def on_message(message: cl.Message):
     if relevant_memories:
         # 将记忆整合到系统消息中
         memory_context = "\n".join([f"- {mem}" for mem in relevant_memories])
-        system_message += f"\n\n**你对用户的记忆**:\n{memory_context}\n\n请在回答时自然地运用这些信息。"
+        system_message += f"\n\n**你对用户的长期记忆**:\n{memory_context}\n\n请在回答时自然地运用这些信息。"
     
-    # 构建消息列表（Ollama 的 chat API 格式）
+    # 构建消息列表（包含系统消息 + 对话历史 + 当前输入）
     messages = [
         {"role": "system", "content": system_message},  # 系统消息（包含记忆上下文）
-        {"role": "user", "content": user_input}         # 用户消息
     ]
     
+    # 添加对话历史（新增！）
+    # 这样 AI 就能记住之前几轮的对话内容
+    messages.extend(chat_history)
+    
+    # 添加当前用户输入
+    messages.append({"role": "user", "content": user_input})
+    
     # ========================================
-    # 第三步：调用 Ollama 生成回复（流式输出）
+    # 第四步：调用 OpenRouter 生成回复（流式输出）
     # ========================================
     # 【修改】：创建一个空消息，并通过流式更新来逐步显示内容
     msg = cl.Message(content="")  # 创建空消息对象
@@ -214,8 +246,8 @@ async def on_message(message: cl.Message):
     
     # 【修改】：显示"正在生成"的提示
     async with cl.Step(name="🤔 正在生成回复..."):
-        # 【修改】：调用流式版本的 Ollama API
-        for chunk in call_ollama_stream(messages):
+        # 调用流式版本的 OpenRouter API
+        for chunk in call_openrouter_stream(messages):
             # 【修改】：每收到一个文本片段，就累加到完整回复中
             full_response += chunk
             
@@ -227,7 +259,23 @@ async def on_message(message: cl.Message):
     await msg.update()
     
     # ========================================
-    # 第四步：将新对话保存到 Mem0
+    # 第五步：更新对话历史（新增！）
+    # ========================================
+    # 将当前对话添加到历史记录中
+    chat_history.append({"role": "user", "content": user_input})
+    chat_history.append({"role": "assistant", "content": full_response})
+    
+    # 限制历史记录长度（保留最近的 10 轮对话，即 20 条消息）
+    # 这样可以避免上下文过长导致 API 调用成本增加
+    if len(chat_history) > 20:
+        chat_history = chat_history[-20:]  # 只保留最后 20 条消息
+    
+    # 保存回会话
+    cl.user_session.set("chat_history", chat_history)
+    print(f"📋 对话历史已更新，当前包含 {len(chat_history)} 条消息")
+    
+    # ========================================
+    # 第六步：将新对话保存到 Mem0
     # ========================================
     if memory is not None:
         try:

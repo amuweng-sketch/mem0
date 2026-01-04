@@ -1,0 +1,441 @@
+{
+  "name": "AI 资讯多源自动收集 (优化版)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1072,
+        432
+      ],
+      "id": "0139d6b1-0841-44ab-8aa5-71c1d0d73a68",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 这里管理您的所有 RSS 订阅源\n// 想加新的源，就在下面复制一行\nreturn [\n  { json: { url: \"https://www.theverge.com/rss/artificial-intelligence/index.xml\" } },\n  { json: { url: \"https://techcrunch.com/category/artificial-intelligence/feed/\" } },\n  { json: { url: \"https://hnrss.org/newest?q=AI\" } }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -848,
+        432
+      ],
+      "id": "75e9f1ad-b257-40ef-b29c-22de9155f57e",
+      "name": "Define RSS Sources"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "7cec36be-55e4-439c-a863-329288c30ad2",
+          "mode": "list",
+          "cachedResultName": "AI 资讯",
+          "cachedResultUrl": "https://www.notion.so/7cec36be55e4439ca863329288c30ad2"
+        },
+        "returnAll": true,
+        "simple": false,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -400,
+        432
+      ],
+      "id": "7d48a4df-0d95-4cfd-a504-7d35369f73be",
+      "name": "Get many database pages",
+      "executeOnce": true,
+      "credentials": {
+        "notionApi": {
+          "id": "QQqe3BJcZSJRfkCB",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://r.jina.ai/' + encodeURIComponent($json.link) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer jina_737c576695244361a56240e6a9b8173e4o6NVqmtY6dru9m7cPWuDHwxa2EP"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        256,
+        432
+      ],
+      "id": "f339979f-08ad-469c-b70e-cb8048a7ca98",
+      "name": "HTTP Request",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=请分析以下文章内容：\n{{ $json.data }}\n请严格按照以下 JSON 格式输出，不要包含 Markdown 标记：\n{\n\"title_cn\": \"中文标题（简练吸睛）\",\n\"summary_cn\": \"中文摘要（100字以内，概括核心）\",\n\"tags\": [\"标签1\", \"标签2\"],\n\"score\": \"评分（1-10分，代表重要程度）\"\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        464,
+        432
+      ],
+      "id": "2b162f6d-dc37-49a3-b30a-cd1fd0d3450a",
+      "name": "AI Agent",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "model": "deepseek/deepseek-v3.2",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        464,
+        656
+      ],
+      "id": "dba152b1-ff30-48ac-a2fe-89470e27b285",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "pEdLfUQxAqS5WCR3",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.parse($json.output.replace(/```json/g, \"\").replace(/```/g, \"\")) }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        432
+      ],
+      "id": "82b96894-cbc8-4c38-b281-bbd098331fe1",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "7cec36be-55e4-439c-a863-329288c30ad2",
+          "mode": "list",
+          "cachedResultName": "AI 资讯",
+          "cachedResultUrl": "https://www.notion.so/7cec36be55e4439ca863329288c30ad2"
+        },
+        "title": "={{ $json.title_cn }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "AI 评分|number",
+              "numberValue": "={{ Number($json.score) }}"
+            },
+            {
+              "key": "AI 摘要|rich_text",
+              "textContent": "={{ $json.summary_cn }}"
+            },
+            {
+              "key": "标签|multi_select",
+              "multiSelectValue": "={{ $json.tags }}"
+            },
+            {
+              "key": "link|url",
+              "urlValue": "={{ $('Filter New Articles').item.json.link }}"
+            },
+            {
+              "key": "发布时间|date",
+              "date": "={{ $json.pubDate || $json.isoDate || $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1264,
+        432
+      ],
+      "id": "9464c8fd-9785-4a51-8b27-46c48589aecc",
+      "name": "Create a database page",
+      "credentials": {
+        "notionApi": {
+          "id": "QQqe3BJcZSJRfkCB",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rssItems = $('RSS Read').all(); // 修改了这里：引用新的 RSS 节点\nconst notionData = $input.all();\n\n// 清洗函数：解决 http/https 和尾部斜杠不一致问题\nfunction cleanUrl(url) {\n    if (!url) return '';\n    return url.toString().trim().replace(/\\/$/, \"\").replace(/^https?:\\/\\//, \"\").split('?')[0];\n}\n\n// 提取 Notion 已有 URL 指纹\nconst existingUrls = notionData.map(item => {\n    const url = item.json.properties?.link?.url || item.json.properties?.原文链接?.url;\n    return cleanUrl(url);\n}).filter(Boolean);\n\n// 过滤 RSS\nconst newItems = rssItems.filter(item => {\n  const rssLink = cleanUrl(item.json.link);\n  return !existingUrls.includes(rssLink);\n});\n\nreturn newItems;"
+      },
+      "id": "48814c26-8bba-4f14-99b3-66039b6e39a6",
+      "name": "Filter New Articles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        432
+      ],
+      "id": "aecaaa08-1d70-415a-ae06-cc0c808ba826",
+      "name": "RSS Read"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9babdd02-987c-4e53-9469-c6cb83ca5215",
+              "leftValue": "={{ $json.output }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        816,
+        432
+      ],
+      "id": "ffd42132-8def-42ef-bbcd-5bb093717803",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "batchSize": 2,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        16,
+        432
+      ],
+      "id": "f26b4ad0-1c84-4478-a736-8a7daaa7f0cf",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1472,
+        432
+      ],
+      "id": "1abab0cb-12f1-401d-97c1-a27cd9cf1af4",
+      "name": "Wait",
+      "webhookId": "c41c0846-697d-4af3-b14b-f5bba31f27c1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Define RSS Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Create a database page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter New Articles": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many database pages": {
+      "main": [
+        [
+          {
+            "node": "Filter New Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Define RSS Sources": {
+      "main": [
+        [
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "Get many database pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a database page": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c2990b76-695e-4242-bcec-7a27befe81aa",
+  "meta": {
+    "instanceId": "7307cbfd98f3192b6eea35b06bbac0d2cc893c63937f1b3f45146f5a427ba285"
+  },
+  "id": "nn86sMyXB6GXA1VM",
+  "tags": []
+}
