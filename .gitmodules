@@ -1,0 +1,3 @@
+[submodule "mem0/.claude"]
+	path = mem0/.claude
+	url = https://github.com/amuweng-sketch/skills.git
